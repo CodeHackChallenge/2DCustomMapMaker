@@ -119,8 +119,11 @@ public TileMapMaker() {
         miniMapPanel.repaint();
     });
     
-    JButton saveBtn = new JButton("Save Map");
+    JButton saveBtn = new JButton("Save as TXT");
     saveBtn.addActionListener(e -> saveMap());
+    
+    JButton saveJsonBtn = new JButton("Save as JSON");
+    saveJsonBtn.addActionListener(e -> saveMapAsJson());
     
     JButton loadBtn = new JButton("Load Map");
     loadBtn.addActionListener(e -> loadMap());
@@ -160,6 +163,7 @@ public TileMapMaker() {
     controlPanel.add(clearImageBtn);
     controlPanel.add(new JSeparator(SwingConstants.VERTICAL));
     controlPanel.add(saveBtn);
+    controlPanel.add(saveJsonBtn);
     controlPanel.add(loadBtn);
     controlPanel.add(new JSeparator(SwingConstants.VERTICAL));
     controlPanel.add(clearBtn);
@@ -318,7 +322,50 @@ private void saveMap() {
                 }
                 writer.println();
             }
-            JOptionPane.showMessageDialog(this, "Map saved successfully!");
+            JOptionPane.showMessageDialog(this, "Map saved successfully as TXT!");
+        } catch (IOException e) {
+            JOptionPane.showMessageDialog(this, 
+                "Error saving map: " + e.getMessage(), 
+                "Error", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+}
+
+private void saveMapAsJson() {
+    JFileChooser fileChooser = new JFileChooser();
+    FileNameExtensionFilter filter = new FileNameExtensionFilter("JSON files", "json");
+    fileChooser.setFileFilter(filter);
+    
+    int result = fileChooser.showSaveDialog(this);
+    if (result == JFileChooser.APPROVE_OPTION) {
+        File file = fileChooser.getSelectedFile();
+        if (!file.getName().endsWith(".json")) {
+            file = new File(file.getAbsolutePath() + ".json");
+        }
+        
+        try (PrintWriter writer = new PrintWriter(file)) {
+            writer.println("{");
+            writer.println("  \"width\": " + mapWidth + ",");
+            writer.println("  \"height\": " + mapHeight + ",");
+            writer.println("  \"tileSize\": " + TILE_SIZE + ",");
+            writer.println("  \"tiles\": [");
+            
+            // Write tile data as 2D array
+            for (int i = 0; i < mapHeight; i++) {
+                writer.print("    [");
+                for (int j = 0; j < mapWidth; j++) {
+                    writer.print(tileMap[i][j]);
+                    if (j < mapWidth - 1) writer.print(", ");
+                }
+                writer.print("]");
+                if (i < mapHeight - 1) writer.println(",");
+                else writer.println();
+            }
+            
+            writer.println("  ]");
+            writer.println("}");
+            
+            JOptionPane.showMessageDialog(this, "Map saved successfully as JSON!");
         } catch (IOException e) {
             JOptionPane.showMessageDialog(this, 
                 "Error saving map: " + e.getMessage(), 

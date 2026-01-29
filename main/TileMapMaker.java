@@ -14,20 +14,29 @@ public class TileMapMaker extends JFrame {
     private int mapWidth = 50;
     private int mapHeight = 50;
     
-    private int[][] tileMap;
+    // Layer constants
+    private static final int LAYER_GROUND = 0;
+    private static final int LAYER_DECORATION = 1;
+    private static final int LAYER_OBJECTS = 2;
+    private static final int NUM_LAYERS = 3;
+    
+    private int[][][] tileLayers; // [layer][row][col]
+    private int currentLayer = LAYER_GROUND;
     private MapPanel mapPanel;
     private MiniMapPanel miniMapPanel;
     private JScrollPane scrollPane;
     private JLabel coordinateLabel;
+    private JLabel layerLabel;
     private int currentTile = 0; // 0 = walkable, 1 = solid
     private BufferedImage referenceImage;
     private Stack<TileChange> undoStack = new Stack<>();
     
     // Inner class to store tile changes for undo
     private class TileChange {
-        int row, col, oldValue, newValue;
+        int layer, row, col, oldValue, newValue;
         
-        TileChange(int row, int col, int oldValue, int newValue) {
+        TileChange(int layer, int row, int col, int oldValue, int newValue) {
+            this.layer = layer;
             this.row = row;
             this.col = col;
             this.oldValue = oldValue;
@@ -43,15 +52,15 @@ public class TileMapMaker extends JFrame {
             e.printStackTrace();
         }
         
-        setTitle("2D Tile Map Maker");
+        setTitle("2D Tile Map Maker - Multi-Layer");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLayout(new BorderLayout());
         
         // Show dialog to set map dimensions
         showDimensionsDialog();
         
-        // Initialize tile map
-        tileMap = new int[mapHeight][mapWidth];
+        // Initialize tile layers
+        tileLayers = new int[NUM_LAYERS][mapHeight][mapWidth];
         
         // Create map panel
         mapPanel = new MapPanel();
@@ -93,10 +102,52 @@ public class TileMapMaker extends JFrame {
         // Create control panel
         JPanel controlPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 5));
         
-        // Create coordinate label
+        // Create coordinate and layer labels
         coordinateLabel = new JLabel("Tile: (0, 0)");
         coordinateLabel.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
         coordinateLabel.setFont(new Font("Monospaced", Font.BOLD, 12));
+        
+        layerLabel = new JLabel("Layer: Ground");
+        layerLabel.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
+        layerLabel.setFont(new Font("Monospaced", Font.BOLD, 12));
+        layerLabel.setForeground(new Color(0, 100, 0));
+        
+        // Layer selection buttons
+        JButton groundLayerBtn = new JButton("Ground");
+        groundLayerBtn.setBackground(new Color(139, 69, 19));
+        groundLayerBtn.setForeground(Color.WHITE);
+        groundLayerBtn.setOpaque(true);
+        groundLayerBtn.setBorderPainted(true);
+        groundLayerBtn.addActionListener(e -> {
+            currentLayer = LAYER_GROUND;
+            layerLabel.setText("Layer: Ground");
+            layerLabel.setForeground(new Color(0, 100, 0));
+            mapPanel.repaint();
+        });
+        
+        JButton decorationLayerBtn = new JButton("Decoration");
+        decorationLayerBtn.setBackground(new Color(34, 139, 34));
+        decorationLayerBtn.setForeground(Color.WHITE);
+        decorationLayerBtn.setOpaque(true);
+        decorationLayerBtn.setBorderPainted(true);
+        decorationLayerBtn.addActionListener(e -> {
+            currentLayer = LAYER_DECORATION;
+            layerLabel.setText("Layer: Decoration");
+            layerLabel.setForeground(new Color(34, 139, 34));
+            mapPanel.repaint();
+        });
+        
+        JButton objectsLayerBtn = new JButton("Objects");
+        objectsLayerBtn.setBackground(new Color(70, 130, 180));
+        objectsLayerBtn.setForeground(Color.WHITE);
+        objectsLayerBtn.setOpaque(true);
+        objectsLayerBtn.setBorderPainted(true);
+        objectsLayerBtn.addActionListener(e -> {
+            currentLayer = LAYER_OBJECTS;
+            layerLabel.setText("Layer: Objects");
+            layerLabel.setForeground(new Color(70, 130, 180));
+            mapPanel.repaint();
+        });
         
         JButton walkableBtn = new JButton("Walkable (0)");
         walkableBtn.setBackground(Color.GREEN);
@@ -129,16 +180,36 @@ public class TileMapMaker extends JFrame {
         JButton loadBtn = new JButton("Load Map");
         loadBtn.addActionListener(e -> loadMap());
         
-        JButton clearBtn = new JButton("Clear All");
+        JButton clearBtn = new JButton("Clear Layer");
         clearBtn.addActionListener(e -> {
             int confirm = JOptionPane.showConfirmDialog(this, 
-                "Are you sure you want to clear the entire map?", 
+                "Are you sure you want to clear the current layer?", 
                 "Confirm Clear", 
                 JOptionPane.YES_NO_OPTION);
             if (confirm == JOptionPane.YES_OPTION) {
                 for (int i = 0; i < mapHeight; i++) {
                     for (int j = 0; j < mapWidth; j++) {
-                        tileMap[i][j] = 0;
+                        tileLayers[currentLayer][i][j] = 0;
+                    }
+                }
+                undoStack.clear();
+                mapPanel.repaint();
+                miniMapPanel.repaint();
+            }
+        });
+        
+        JButton clearAllBtn = new JButton("Clear All Layers");
+        clearAllBtn.addActionListener(e -> {
+            int confirm = JOptionPane.showConfirmDialog(this, 
+                "Are you sure you want to clear ALL layers?", 
+                "Confirm Clear All", 
+                JOptionPane.YES_NO_OPTION);
+            if (confirm == JOptionPane.YES_OPTION) {
+                for (int layer = 0; layer < NUM_LAYERS; layer++) {
+                    for (int i = 0; i < mapHeight; i++) {
+                        for (int j = 0; j < mapWidth; j++) {
+                            tileLayers[layer][i][j] = 0;
+                        }
                     }
                 }
                 undoStack.clear();
@@ -154,6 +225,12 @@ public class TileMapMaker extends JFrame {
         undoBtn.addActionListener(e -> undo());
         
         controlPanel.add(coordinateLabel);
+        controlPanel.add(layerLabel);
+        controlPanel.add(new JSeparator(SwingConstants.VERTICAL));
+        controlPanel.add(new JLabel("Layers:"));
+        controlPanel.add(groundLayerBtn);
+        controlPanel.add(decorationLayerBtn);
+        controlPanel.add(objectsLayerBtn);
         controlPanel.add(new JSeparator(SwingConstants.VERTICAL));
         controlPanel.add(walkableBtn);
         controlPanel.add(solidBtn);
@@ -168,6 +245,7 @@ public class TileMapMaker extends JFrame {
         controlPanel.add(loadBtn);
         controlPanel.add(new JSeparator(SwingConstants.VERTICAL));
         controlPanel.add(clearBtn);
+        controlPanel.add(clearAllBtn);
         controlPanel.add(resizeBtn);
         
         add(controlPanel, BorderLayout.SOUTH);
@@ -179,7 +257,7 @@ public class TileMapMaker extends JFrame {
     private void undo() {
         if (!undoStack.isEmpty()) {
             TileChange change = undoStack.pop();
-            tileMap[change.row][change.col] = change.oldValue;
+            tileLayers[change.layer][change.row][change.col] = change.oldValue;
             mapPanel.repaint();
             miniMapPanel.repaint();
         }
@@ -242,19 +320,21 @@ public class TileMapMaker extends JFrame {
                 int newHeight = Integer.parseInt(heightField.getText().trim());
                 
                 if (newWidth > 0 && newWidth <= 200 && newHeight > 0 && newHeight <= 200) {
-                    // Create new tile map with new dimensions
-                    int[][] newTileMap = new int[newHeight][newWidth];
+                    // Create new tile layers with new dimensions
+                    int[][][] newTileLayers = new int[NUM_LAYERS][newHeight][newWidth];
                     
-                    // Copy existing data
-                    for (int i = 0; i < Math.min(mapHeight, newHeight); i++) {
-                        for (int j = 0; j < Math.min(mapWidth, newWidth); j++) {
-                            newTileMap[i][j] = tileMap[i][j];
+                    // Copy existing data for all layers
+                    for (int layer = 0; layer < NUM_LAYERS; layer++) {
+                        for (int i = 0; i < Math.min(mapHeight, newHeight); i++) {
+                            for (int j = 0; j < Math.min(mapWidth, newWidth); j++) {
+                                newTileLayers[layer][i][j] = tileLayers[layer][i][j];
+                            }
                         }
                     }
                     
                     mapWidth = newWidth;
                     mapHeight = newHeight;
-                    tileMap = newTileMap;
+                    tileLayers = newTileLayers;
                     undoStack.clear();
                     
                     // Update panel
@@ -315,13 +395,16 @@ public class TileMapMaker extends JFrame {
                 // Write width and height as first line
                 writer.println(mapWidth + " " + mapHeight);
                 
-                // Write tile data
-                for (int i = 0; i < mapHeight; i++) {
-                    for (int j = 0; j < mapWidth; j++) {
-                        writer.print(tileMap[i][j]);
-                        if (j < mapWidth - 1) writer.print(" ");
+                // Write each layer
+                for (int layer = 0; layer < NUM_LAYERS; layer++) {
+                    writer.println("LAYER:" + layer);
+                    for (int i = 0; i < mapHeight; i++) {
+                        for (int j = 0; j < mapWidth; j++) {
+                            writer.print(tileLayers[layer][i][j]);
+                            if (j < mapWidth - 1) writer.print(" ");
+                        }
+                        writer.println();
                     }
-                    writer.println();
                 }
                 JOptionPane.showMessageDialog(this, "Map saved successfully as TXT!");
             } catch (IOException e) {
@@ -349,21 +432,30 @@ public class TileMapMaker extends JFrame {
                 writer.println("  \"width\": " + mapWidth + ",");
                 writer.println("  \"height\": " + mapHeight + ",");
                 writer.println("  \"tileSize\": " + TILE_SIZE + ",");
-                writer.println("  \"tiles\": [");
+                writer.println("  \"layers\": {");
                 
-                // Write tile data as 2D array
-                for (int i = 0; i < mapHeight; i++) {
-                    writer.print("    [");
-                    for (int j = 0; j < mapWidth; j++) {
-                        writer.print(tileMap[i][j]);
-                        if (j < mapWidth - 1) writer.print(", ");
+                String[] layerNames = {"ground", "decoration", "objects"};
+                
+                for (int layer = 0; layer < NUM_LAYERS; layer++) {
+                    writer.println("    \"" + layerNames[layer] + "\": [");
+                    
+                    for (int i = 0; i < mapHeight; i++) {
+                        writer.print("      [");
+                        for (int j = 0; j < mapWidth; j++) {
+                            writer.print(tileLayers[layer][i][j]);
+                            if (j < mapWidth - 1) writer.print(", ");
+                        }
+                        writer.print("]");
+                        if (i < mapHeight - 1) writer.println(",");
+                        else writer.println();
                     }
-                    writer.print("]");
-                    if (i < mapHeight - 1) writer.println(",");
+                    
+                    writer.print("    ]");
+                    if (layer < NUM_LAYERS - 1) writer.println(",");
                     else writer.println();
                 }
                 
-                writer.println("  ]");
+                writer.println("  }");
                 writer.println("}");
                 
                 JOptionPane.showMessageDialog(this, "Map saved successfully as JSON!");
@@ -408,18 +500,27 @@ public class TileMapMaker extends JFrame {
                 // Resize map to match loaded dimensions
                 mapWidth = width;
                 mapHeight = height;
-                tileMap = new int[mapHeight][mapWidth];
+                tileLayers = new int[NUM_LAYERS][mapHeight][mapWidth];
                 undoStack.clear();
                 
-                // Read tile data
+                // Read layer data
                 String line;
+                int currentLoadLayer = -1;
                 int row = 0;
-                while ((line = reader.readLine()) != null && row < height) {
-                    String[] tokens = line.trim().split("\\s+");
-                    for (int col = 0; col < Math.min(tokens.length, width); col++) {
-                        tileMap[row][col] = Integer.parseInt(tokens[col]);
+                
+                while ((line = reader.readLine()) != null) {
+                    line = line.trim();
+                    
+                    if (line.startsWith("LAYER:")) {
+                        currentLoadLayer = Integer.parseInt(line.substring(6));
+                        row = 0;
+                    } else if (currentLoadLayer >= 0 && currentLoadLayer < NUM_LAYERS && row < height) {
+                        String[] tokens = line.split("\\s+");
+                        for (int col = 0; col < Math.min(tokens.length, width); col++) {
+                            tileLayers[currentLoadLayer][row][col] = Integer.parseInt(tokens[col]);
+                        }
+                        row++;
                     }
-                    row++;
                 }
                 
                 // Update panel
@@ -454,44 +555,46 @@ public class TileMapMaker extends JFrame {
             // Resize map to match loaded dimensions
             mapWidth = width;
             mapHeight = height;
-            tileMap = new int[mapHeight][mapWidth];
+            tileLayers = new int[NUM_LAYERS][mapHeight][mapWidth];
             undoStack.clear();
             
-            // Extract tiles array
-            int tilesStart = json.indexOf("\"tiles\":");
-            if (tilesStart == -1) {
-                throw new IOException("Invalid JSON format: 'tiles' field not found");
-            }
+            // Extract each layer
+            String[] layerNames = {"ground", "decoration", "objects"};
             
-            int arrayStart = json.indexOf("[", tilesStart);
-            int arrayEnd = json.lastIndexOf("]");
-            
-            if (arrayStart == -1 || arrayEnd == -1) {
-                throw new IOException("Invalid JSON format: tiles array not found");
-            }
-            
-            String tilesContent = json.substring(arrayStart + 1, arrayEnd);
-            
-            // Parse each row
-            int row = 0;
-            int currentPos = 0;
-            
-            while (currentPos < tilesContent.length() && row < height) {
-                int rowStart = tilesContent.indexOf("[", currentPos);
-                if (rowStart == -1) break;
+            for (int layer = 0; layer < NUM_LAYERS; layer++) {
+                String layerKey = "\"" + layerNames[layer] + "\":";
+                int layerStart = json.indexOf(layerKey);
                 
-                int rowEnd = tilesContent.indexOf("]", rowStart);
-                if (rowEnd == -1) break;
-                
-                String rowContent = tilesContent.substring(rowStart + 1, rowEnd);
-                String[] values = rowContent.split(",");
-                
-                for (int col = 0; col < Math.min(values.length, width); col++) {
-                    tileMap[row][col] = Integer.parseInt(values[col].trim());
+                if (layerStart != -1) {
+                    int arrayStart = json.indexOf("[", layerStart);
+                    int arrayEnd = findMatchingBracket(json, arrayStart);
+                    
+                    if (arrayStart != -1 && arrayEnd != -1) {
+                        String layerContent = json.substring(arrayStart + 1, arrayEnd);
+                        
+                        // Parse each row
+                        int row = 0;
+                        int currentPos = 0;
+                        
+                        while (currentPos < layerContent.length() && row < height) {
+                            int rowStart = layerContent.indexOf("[", currentPos);
+                            if (rowStart == -1) break;
+                            
+                            int rowEnd = layerContent.indexOf("]", rowStart);
+                            if (rowEnd == -1) break;
+                            
+                            String rowContent = layerContent.substring(rowStart + 1, rowEnd);
+                            String[] values = rowContent.split(",");
+                            
+                            for (int col = 0; col < Math.min(values.length, width); col++) {
+                                tileLayers[layer][row][col] = Integer.parseInt(values[col].trim());
+                            }
+                            
+                            row++;
+                            currentPos = rowEnd + 1;
+                        }
+                    }
                 }
-                
-                row++;
-                currentPos = rowEnd + 1;
             }
             
             // Update panel
@@ -507,6 +610,18 @@ public class TileMapMaker extends JFrame {
                 "Error loading JSON map: " + e.getMessage(), 
                 "Error", JOptionPane.ERROR_MESSAGE);
         }
+    }
+    
+    private int findMatchingBracket(String str, int openPos) {
+        int count = 1;
+        for (int i = openPos + 1; i < str.length(); i++) {
+            if (str.charAt(i) == '[') count++;
+            else if (str.charAt(i) == ']') {
+                count--;
+                if (count == 0) return i;
+            }
+        }
+        return -1;
     }
     
     private int extractJsonInt(String json, String key) {
@@ -602,20 +717,26 @@ public class TileMapMaker extends JFrame {
                 g2d.drawImage(referenceImage, offsetX, offsetY, miniWidth, miniHeight, this);
             }
             
-            // Draw tiles with semi-transparency so reference image shows through
-            for (int row = 0; row < mapHeight; row++) {
-                for (int col = 0; col < mapWidth; col++) {
-                    int x = offsetX + (int)(col * scale);
-                    int y = offsetY + (int)(row * scale);
-                    int w = Math.max(1, (int)scale);
-                    int h = Math.max(1, (int)scale);
-                    
-                    if (tileMap[row][col] == 0) {
-                        g2d.setColor(new Color(0, 255, 0, 100));
-                    } else {
-                        g2d.setColor(new Color(255, 0, 0, 150));
+            // Draw all layers with different transparencies
+            Color[] layerColors = {
+                new Color(139, 69, 19, 120),    // Ground - brown
+                new Color(34, 139, 34, 120),    // Decoration - green
+                new Color(70, 130, 180, 120)    // Objects - blue
+            };
+            
+            for (int layer = 0; layer < NUM_LAYERS; layer++) {
+                for (int row = 0; row < mapHeight; row++) {
+                    for (int col = 0; col < mapWidth; col++) {
+                        if (tileLayers[layer][row][col] != 0) {
+                            int x = offsetX + (int)(col * scale);
+                            int y = offsetY + (int)(row * scale);
+                            int w = Math.max(1, (int)scale);
+                            int h = Math.max(1, (int)scale);
+                            
+                            g2d.setColor(layerColors[layer]);
+                            g2d.fillRect(x, y, w, h);
+                        }
                     }
-                    g2d.fillRect(x, y, w, h);
                 }
             }
             
@@ -660,10 +781,10 @@ public class TileMapMaker extends JFrame {
                     int row = e.getY() / TILE_SIZE;
                     
                     if (row >= 0 && row < mapHeight && col >= 0 && col < mapWidth) {
-                        int oldValue = tileMap[row][col];
+                        int oldValue = tileLayers[currentLayer][row][col];
                         if (oldValue != currentTile) {
-                            undoStack.push(new TileChange(row, col, oldValue, currentTile));
-                            tileMap[row][col] = currentTile;
+                            undoStack.push(new TileChange(currentLayer, row, col, oldValue, currentTile));
+                            tileLayers[currentLayer][row][col] = currentTile;
                             coordinateLabel.setText(String.format("Tile: (%d, %d)", col, row));
                             repaint();
                             miniMapPanel.repaint();
@@ -679,35 +800,72 @@ public class TileMapMaker extends JFrame {
         @Override
         protected void paintComponent(Graphics g) {
             super.paintComponent(g);
+            Graphics2D g2d = (Graphics2D) g;
             
             // Draw reference image if loaded
             if (referenceImage != null) {
-                g.drawImage(referenceImage, 0, 0, 
+                g2d.drawImage(referenceImage, 0, 0, 
                     mapWidth * TILE_SIZE, mapHeight * TILE_SIZE, this);
             }
             
-            // Draw tiles
-            for (int row = 0; row < mapHeight; row++) {
-                for (int col = 0; col < mapWidth; col++) {
-                    int x = col * TILE_SIZE;
-                    int y = row * TILE_SIZE;
-                    
-                    if (tileMap[row][col] == 0) {
-                        g.setColor(new Color(0, 255, 0, 128)); // Semi-transparent green
-                    } else {
-                        g.setColor(new Color(255, 0, 0, 128)); // Semi-transparent red
+            // Define colors for each layer
+            Color[] layerColors = {
+                new Color(139, 69, 19, 150),    // Ground - brown
+                new Color(34, 139, 34, 150),    // Decoration - green
+                new Color(70, 130, 180, 150)    // Objects - blue
+            };
+            
+            Color[] layerSolidColors = {
+                new Color(178, 34, 34, 150),    // Ground solid - dark red
+                new Color(255, 0, 0, 150),      // Decoration solid - red
+                new Color(139, 0, 0, 150)       // Objects solid - darker red
+            };
+            
+            // Draw all layers
+            for (int layer = 0; layer < NUM_LAYERS; layer++) {
+                boolean isCurrentLayer = (layer == currentLayer);
+                int alpha = isCurrentLayer ? 180 : 80; // Current layer more visible
+                
+                for (int row = 0; row < mapHeight; row++) {
+                    for (int col = 0; col < mapWidth; col++) {
+                        int x = col * TILE_SIZE;
+                        int y = row * TILE_SIZE;
+                        
+                        int tileValue = tileLayers[layer][row][col];
+                        
+                        if (tileValue != 0) {
+                            if (tileValue == 1) {
+                                // Solid tile
+                                Color baseColor = layerSolidColors[layer];
+                                g2d.setColor(new Color(
+                                    baseColor.getRed(), 
+                                    baseColor.getGreen(), 
+                                    baseColor.getBlue(), 
+                                    alpha
+                                ));
+                            } else {
+                                // Walkable tile
+                                Color baseColor = layerColors[layer];
+                                g2d.setColor(new Color(
+                                    baseColor.getRed(), 
+                                    baseColor.getGreen(), 
+                                    baseColor.getBlue(), 
+                                    alpha
+                                ));
+                            }
+                            g2d.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+                        }
                     }
-                    g.fillRect(x, y, TILE_SIZE, TILE_SIZE);
                 }
             }
             
             // Draw grid
-            g.setColor(Color.BLACK);
+            g2d.setColor(Color.BLACK);
             for (int i = 0; i <= mapHeight; i++) {
-                g.drawLine(0, i * TILE_SIZE, mapWidth * TILE_SIZE, i * TILE_SIZE);
+                g2d.drawLine(0, i * TILE_SIZE, mapWidth * TILE_SIZE, i * TILE_SIZE);
             }
             for (int i = 0; i <= mapWidth; i++) {
-                g.drawLine(i * TILE_SIZE, 0, i * TILE_SIZE, mapHeight * TILE_SIZE);
+                g2d.drawLine(i * TILE_SIZE, 0, i * TILE_SIZE, mapHeight * TILE_SIZE);
             }
         }
     }
@@ -717,4 +875,4 @@ public class TileMapMaker extends JFrame {
             new TileMapMaker().setVisible(true);
         });
     }
-}
+} 
